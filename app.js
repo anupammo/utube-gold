@@ -1,5 +1,7 @@
 let deferredPrompt;
 let isSeeking = false;
+let currentAudioUrl = null;
+let currentThumbUrl = null;
 
 const audioPlayer = document.getElementById('audioPlayer');
 const playPauseBtn = document.getElementById('playPauseBtn');
@@ -11,65 +13,230 @@ const currentTrackArtist = document.getElementById('currentTrackArtist');
 const playerThumb = document.getElementById('playerThumb');
 
 const installBtn = document.getElementById('installBtn');
-const fileInput = document.getElementById('fileInput');
+const downloadBtn = document.getElementById('downloadBtn');
+const videoInput = document.getElementById('videoUrl');
+const offlineList = document.getElementById('offlineList');
+const statusMsg = document.getElementById('statusMsg');
 
-// Default backdrop image
-playerThumb.style.backgroundImage = "url('https://images.unsplash.com/photo-1614680376593-902f74fa0d41?w=320')";
+// Fallback background image
+const DEFAULT_ART = "https://images.unsplash.com/photo-1614680376593-902f74fa0d41?w=320";
+playerThumb.style.backgroundImage = `url('${DEFAULT_ART}')`;
 
-// 1. Service Worker & Installation Setup
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js')
-    .then(() => console.log('Service Worker active'))
-    .catch((err) => console.error('Service Worker Registration failed:', err));
+const PIPED_INSTANCES = [
+  'https://pipedapi.kavin.rocks',
+  'https://pipedapi.leptons.xyz',
+  'https://pipedapi.r4fo.com',
+  'https://piped-api.lunar.icu'
+];
+
+// Database configurations
+const DB_NAME = 'BGP_Local_Storage';
+const DB_VERSION = 1;
+const STORE_NAME = 'tracks';
+
+// 1. IndexedDB Helper Functions
+function initDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+    };
+    request.onsuccess = (e) => resolve(e.target.result);
+    request.onerror = (e) => reject(e.target.error);
+  });
 }
 
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredPrompt = e;
-  installBtn.classList.remove('install-hidden');
-});
+async function saveTrackToDB(track) {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.put(track);
+    request.onsuccess = () => resolve();
+    request.onerror = (e) => reject(e.target.error);
+  });
+}
 
-installBtn.addEventListener('click', async () => {
-  if (deferredPrompt) {
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      installBtn.classList.add('install-hidden');
+async function getAllTracksFromDB() {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.getAll();
+    request.onsuccess = (e) => resolve(e.target.result);
+    request.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function getTrackFromDB(id) {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.get(id);
+    request.onsuccess = (e) => resolve(e.target.result);
+    request.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function deleteTrackFromDB(id) {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = (e) => reject(e.target.error);
+  });
+}
+
+// 2. Fetch API stream metadata
+async function fetchAudioMetadata(videoId) {
+  for (const instance of PIPED_INSTANCES) {
+    try {
+      const res = await fetch(`${instance}/streams/${videoId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.audioStreams && data.audioStreams.length > 0) {
+          const bestAudio = data.audioStreams.find(s => s.mimeType.includes('audio/mp4') || s.format === 'M4A') || data.audioStreams[0];
+          return {
+            streamUrl: bestAudio.url,
+            title: data.title || `Track (${videoId})`,
+            uploader: data.uploader || 'YouTube Artist',
+            thumbnailUrl: data.thumbnailUrl || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+          };
+        }
+      }
+    } catch (e) {
+      console.warn(`Instance failed: ${instance}. Rotating...`);
     }
-    deferredPrompt = null;
   }
-});
+  throw new Error("Decoding server busy. Please try again.");
+}
 
-// 2. Handle Selected Local File
-fileInput.addEventListener('change', (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
+// 3. Download & Save Sequence
+async function startDownload(videoId) {
+  statusMsg.textContent = "Connecting to streaming gateway...";
+  downloadBtn.disabled = true;
 
-  // Convert local file into an in-memory stream URL (requires zero network/data)
-  const localFileUrl = URL.createObjectURL(file);
-  
-  // Clean up metadata from file name
-  const trackName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
-  
-  // Assign stream directly to player
-  audioPlayer.src = localFileUrl;
+  try {
+    const metadata = await fetchAudioMetadata(videoId);
+    
+    // Fetch Audio Track stream as binary Blob
+    statusMsg.textContent = "Downloading audio file...";
+    const audioRes = await fetch(metadata.streamUrl);
+    if (!audioRes.ok) throw new Error("Audio download failed.");
+    const audioBlob = await audioRes.blob();
+
+    // Fetch Thumbnail image as binary Blob so art functions 100% offline
+    statusMsg.textContent = "Saving metadata art...";
+    let thumbnailBlob = null;
+    try {
+      const thumbRes = await fetch(metadata.thumbnailUrl);
+      if (thumbRes.ok) {
+        thumbnailBlob = await thumbRes.blob();
+      }
+    } catch (err) {
+      console.warn("Could not save thumbnail offline, using fallback.", err);
+    }
+
+    // Write file parameters as structured JSON schema into IndexedDB
+    await saveTrackToDB({
+      id: videoId,
+      title: metadata.title,
+      uploader: metadata.uploader,
+      audioBlob: audioBlob,
+      thumbnailBlob: thumbnailBlob,
+      savedAt: Date.now()
+    });
+
+    statusMsg.textContent = "Success! Saved offline.";
+    videoInput.value = "";
+    loadOfflineList();
+
+  } catch (err) {
+    statusMsg.textContent = `Error: ${err.message}`;
+  } finally {
+    downloadBtn.disabled = false;
+    setTimeout(() => { statusMsg.textContent = ""; }, 5000);
+  }
+}
+
+// 4. Offline playback mechanics
+async function playOfflineTrack(id) {
+  const track = await getTrackFromDB(id);
+  if (!track) return alert("Database error reading track.");
+
+  // Clean memory leaks before mounting new tracks
+  cleanupObjectUrls();
+
+  // Create local Object URLs mapped to raw offline storage blobs
+  currentAudioUrl = URL.createObjectURL(track.audioBlob);
+  currentThumbUrl = track.thumbnailBlob ? URL.createObjectURL(track.thumbnailBlob) : DEFAULT_ART;
+
+  // Mount elements
+  audioPlayer.src = currentAudioUrl;
   audioPlayer.load();
 
   audioPlayer.play()
-    .then(() => {
-      playerThumb.classList.add('playing');
-    })
-    .catch((e) => console.log("Autoplay deferred:", e));
+    .then(() => playerThumb.classList.add('playing'))
+    .catch(() => playPauseBtn.textContent = "▶");
 
-  // Update Player UI
-  currentTrackTitle.textContent = trackName;
-  currentTrackArtist.textContent = "Local Offline Track";
-  
-  // Setup Device System Lock Screen Controls
-  setupMediaSession(trackName, "Local Storage");
-});
+  // Update UI Elements
+  currentTrackTitle.textContent = track.title;
+  currentTrackArtist.textContent = track.uploader;
+  playerThumb.style.backgroundImage = `url('${currentThumbUrl}')`;
 
-// 3. Audio Player Events
+  // Bind controls to system media widget
+  setupMediaSession(track.title, track.uploader, currentThumbUrl);
+}
+
+function cleanupObjectUrls() {
+  if (currentAudioUrl) {
+    URL.revokeObjectURL(currentAudioUrl);
+    currentAudioUrl = null;
+  }
+  if (currentThumbUrl && currentThumbUrl !== DEFAULT_ART) {
+    URL.revokeObjectURL(currentThumbUrl);
+    currentThumbUrl = null;
+  }
+}
+
+// 5. Offline list rendering UI
+async function loadOfflineList() {
+  const tracks = await getAllTracksFromDB();
+  if (tracks.length === 0) {
+    offlineList.innerHTML = `<p class="empty-state">No downloaded tracks found.</p>`;
+    return;
+  }
+
+  offlineList.innerHTML = tracks.map(track => {
+    // Generate temporary display thumbnail URL for list
+    const thumbUrl = track.thumbnailBlob ? URL.createObjectURL(track.thumbnailBlob) : DEFAULT_ART;
+    return `
+      <div class="history-card" onclick="playOfflineTrack('${track.id}')">
+        <div class="history-thumb" style="background-image: url('${thumbUrl}')"></div>
+        <div class="history-info">
+          <p class="history-title">${escapeHTML(track.title)}</p>
+          <p class="history-meta">${escapeHTML(track.uploader)}</p>
+        </div>
+        <button class="btn-delete" onclick="event.stopPropagation(); removeTrack('${track.id}')">🗑</button>
+      </div>
+    `;
+  }).join('');
+}
+
+async function removeTrack(id) {
+  if (confirm("Delete this track from device storage?")) {
+    await deleteTrackFromDB(id);
+    loadOfflineList();
+  }
+}
+
+// 6. Audio Player Events
 audioPlayer.addEventListener('timeupdate', () => {
   if (!isSeeking) {
     const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
@@ -102,13 +269,9 @@ audioPlayer.addEventListener('pause', () => {
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "paused";
 });
 
-progressBar.addEventListener('input', () => {
-  isSeeking = true;
-});
-
+progressBar.addEventListener('input', () => { isSeeking = true; });
 progressBar.addEventListener('change', () => {
-  const seekTime = (progressBar.value / 100) * audioPlayer.duration;
-  audioPlayer.currentTime = seekTime;
+  audioPlayer.currentTime = (progressBar.value / 100) * audioPlayer.duration;
   isSeeking = false;
 });
 
@@ -119,15 +282,14 @@ function formatTime(seconds) {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
-// 4. Media Session (For Lock Screen Controls)
-function setupMediaSession(title, artist) {
+function setupMediaSession(title, artist, thumbnail) {
   if (!('mediaSession' in navigator)) return;
 
   navigator.mediaSession.metadata = new MediaMetadata({
     title: title,
     artist: artist,
     album: 'Offline BG Player',
-    artwork: [{ src: 'https://images.unsplash.com/photo-1614680376593-902f74fa0d41?w=320', sizes: '320x320', type: 'image/jpeg' }]
+    artwork: [{ src: thumbnail, sizes: '320x180', type: 'image/jpeg' }]
   });
 
   navigator.mediaSession.setActionHandler('play', () => audioPlayer.play());
@@ -136,3 +298,26 @@ function setupMediaSession(title, artist) {
     audioPlayer.currentTime = details.seekTime;
   });
 }
+
+function escapeHTML(str) {
+  return str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
+}
+
+function extractVideoId(url) {
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : url;
+}
+
+downloadBtn.addEventListener('click', () => {
+  const rawInput = videoInput.value.trim();
+  const videoId = extractVideoId(rawInput);
+  if (videoId) {
+    startDownload(videoId);
+  } else {
+    alert('Please enter a valid YouTube ID or URL');
+  }
+});
+
+// Load the offline list upon launch
+loadOfflineList();
