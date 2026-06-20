@@ -3,80 +3,48 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>YT Background Player</title>
-  <link rel="manifest" href="manifest.json">
-  <style>
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: #121212;
-      color: #ffffff;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
-      padding: 20px;
-      box-sizing: border-box;
-    }
-    #container {
-      text-align: center;
-      max-width: 400px;
-      width: 100%;
-    }
-    #player {
-      width: 100%;
-      height: 220px;
-      background: #000;
-      border-radius: 8px;
-      margin-top: 20px;
-    }
-    input {
-      width: 100%;
-      padding: 12px;
-      margin: 15px 0;
-      border-radius: 6px;
-      border: 1px solid #333;
-      background: #222;
-      color: #fff;
-      box-sizing: border-box;
-    }
-    button {
-      width: 100%;
-      padding: 12px;
-      background: #ff0000;
-      border: none;
-      color: white;
-      font-weight: bold;
-      font-size: 16px;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-    button:active {
-      background: #cc0000;
-    }
-  </style>
+  <title>BG Player</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./style.css">
+  <meta name="theme-color" content="#ff0033">
 </head>
 <body>
-  <div id="container">
-    <h2>YT Background Player</h2>
-    <p style="font-size: 14px; color: #aaa;">
-      Load a video, minimize the app, and resume playback from your device's lock screen or notification panel.
-    </p>
-    
-    <input type="text" id="videoUrl" placeholder="Paste YouTube Link or Video ID" />
-    <button id="loadBtn">Load & Play</button>
-    
-    <div id="player"></div>
+  <div class="app-container">
+    <header class="header">
+      <div class="logo">
+        <span class="logo-dot"></span>
+        <h1>BG Player</h1>
+      </div>
+      <button id="installBtn" class="btn btn-secondary install-hidden">Install App</button>
+    </header>
+
+    <main class="content">
+      <section class="player-section">
+        <div class="input-group">
+          <input type="text" id="videoUrl" placeholder="Paste YouTube Link or Video ID" />
+          <button id="loadBtn" class="btn btn-primary">Play</button>
+        </div>
+        
+        <div class="video-wrapper">
+          <div id="player"></div>
+        </div>
+      </section>
+
+      <section class="history-section">
+        <h3>Recently Played</h3>
+        <div id="historyList" class="history-list">
+          <p class="empty-state">No played tracks yet.</p>
+        </div>
+      </section>
+    </main>
   </div>
 
-  <!-- Hidden looping silent audio to maintain system audio focus -->
+  <!-- Loop-friendly silent audio fallback for system audio focus -->
   <audio id="silentAudio" loop style="display:none;">
     <source src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA" type="audio/wav">
   </audio>
 
-  <!-- YouTube Iframe API -->
   <script src="https://www.youtube.com/iframe_api"></script>
-  <script src="app.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
