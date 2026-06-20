@@ -2,7 +2,7 @@
   "name": "Background Sound for YouTube",
   "short_name": "BG Player",
   "start_url": "./index.html",
-  "display": "standalone",
+  "display": "minimal-ui",
   "background_color": "#0d0e12",
   "theme_color": "#ff0033",
   "icons": [
