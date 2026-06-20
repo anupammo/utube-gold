@@ -69,7 +69,8 @@ body {
 .btn-primary {
   background-color: var(--accent);
   color: white;
-  padding: 12px 24px;
+  padding: 12px 20px;
+  font-size: 0.9rem;
 }
 
 .btn-primary:hover {
@@ -84,12 +85,12 @@ body {
 }
 
 .btn-icon {
-  width: 60px;
-  height: 60px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   background-color: var(--accent);
   color: white;
-  font-size: 1.5rem;
+  font-size: 1.4rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -136,7 +137,7 @@ input[type="text"]:focus {
   font-weight: 500;
 }
 
-/* Beautiful music deck */
+/* Player Deck */
 .player-card {
   background-color: var(--bg-card);
   border: 1px solid var(--border);
@@ -147,10 +148,10 @@ input[type="text"]:focus {
 }
 
 .player-thumb-large {
-  width: 130px;
-  height: 130px;
+  width: 120px;
+  height: 120px;
   border-radius: 50%;
-  margin: 0 auto 16px auto;
+  margin: 0 auto 14px auto;
   background-size: cover;
   background-position: center;
   background-color: #2a2d3d;
@@ -169,14 +170,14 @@ input[type="text"]:focus {
 
 .player-info h4 {
   margin: 0 0 6px 0;
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .player-info p {
-  margin: 0 0 20px 0;
+  margin: 0 0 16px 0;
   font-size: 0.85rem;
   color: var(--text-muted);
 }
@@ -186,7 +187,7 @@ input[type="text"]:focus {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   font-size: 0.8rem;
   color: var(--text-muted);
 }
@@ -197,17 +198,17 @@ input[type="range"] {
   cursor: pointer;
 }
 
-.history-section h3 {
+.library-section h3 {
   font-size: 1.1rem;
   margin-bottom: 12px;
   color: var(--text-main);
 }
 
-.history-list {
+.library-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: 300px;
+  max-height: 280px;
   overflow-y: auto;
 }
 
@@ -215,10 +216,10 @@ input[type="range"] {
   text-align: center;
   color: var(--text-muted);
   font-size: 0.9rem;
-  margin-top: 20px;
+  margin-top: 16px;
 }
 
-/* Offline cards */
+/* Offline Library Item Cards */
 .history-card {
   display: flex;
   align-items: center;
@@ -236,8 +237,8 @@ input[type="range"] {
 }
 
 .history-thumb {
-  width: 80px;
-  height: 45px;
+  width: 72px;
+  height: 40px;
   background-size: cover;
   background-position: center;
   border-radius: 6px;
@@ -273,7 +274,6 @@ input[type="range"] {
   cursor: pointer;
   padding: 8px;
   border-radius: 4px;
-  transition: background-color 0.2s;
 }
 
 .btn-delete:hover {
