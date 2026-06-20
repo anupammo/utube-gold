@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Offline BG Player</title>
+  <title>Offline MP3 Player</title>
   <link rel="manifest" href="./manifest.json">
   <link rel="stylesheet" href="./style.css">
   <meta name="theme-color" content="#ff0033">
@@ -13,28 +13,28 @@
     <header class="header">
       <div class="logo">
         <span class="logo-dot"></span>
-        <h1>BG Player</h1>
+        <h1>Offline Player</h1>
       </div>
       <button id="installBtn" class="btn btn-secondary install-hidden">Install App</button>
     </header>
 
     <main class="content">
-      <!-- Download Manager -->
+      <!-- YouTube Downloader Input -->
       <section class="download-section">
         <div class="input-group">
           <input type="text" id="videoUrl" placeholder="Paste YouTube Link or Video ID" />
-          <button id="downloadBtn" class="btn btn-primary">Download</button>
+          <button id="downloadBtn" class="btn btn-primary">Download to App</button>
         </div>
         <p id="statusMsg" class="status-message"></p>
       </section>
         
-      <!-- Active Player Deck -->
+      <!-- Visual Active Audio deck -->
       <section class="player-section">
         <div class="player-card">
           <div id="playerThumb" class="player-thumb-large"></div>
           <div class="player-info">
             <h4 id="currentTrackTitle">No Track Playing</h4>
-            <p id="currentTrackArtist">Select a downloaded track below</p>
+            <p id="currentTrackArtist">Select a downloaded MP3 below</p>
           </div>
           
           <div class="playback-controls">
@@ -49,17 +49,17 @@
         </div>
       </section>
 
-      <!-- Persistent Offline List -->
-      <section class="history-section">
-        <h3>Downloaded Tracks</h3>
-        <div id="offlineList" class="history-list">
-          <p class="empty-state">No downloaded tracks found.</p>
+      <!-- Persistent Offline Library list -->
+      <section class="library-section">
+        <h3>My Downloaded MP3s</h3>
+        <div id="offlineList" class="library-list">
+          <p class="empty-state">Your library is empty. Download a track above to get started.</p>
         </div>
       </section>
     </main>
   </div>
 
-  <!-- Native HTML5 Audio element for background play -->
+  <!-- Hidden native HTML5 Audio element -->
   <audio id="audioPlayer" style="display:none;"></audio>
 
   <script src="./app.js"></script>
