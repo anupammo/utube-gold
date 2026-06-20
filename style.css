@@ -83,6 +83,19 @@ body {
   font-size: 0.85rem;
 }
 
+.btn-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background-color: var(--accent);
+  color: white;
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
+
 .install-hidden {
   display: none !important;
 }
@@ -91,7 +104,7 @@ body {
   margin-top: 20px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
   flex-grow: 1;
 }
 
@@ -100,7 +113,7 @@ body {
   gap: 8px;
 }
 
-input {
+input[type="text"] {
   flex-grow: 1;
   background-color: var(--bg-card);
   border: 1px solid var(--border);
@@ -109,20 +122,79 @@ input {
   padding: 12px 16px;
   font-size: 0.95rem;
   outline: none;
-  transition: border-color 0.2s;
 }
 
-input:focus {
+input[type="text"]:focus {
   border-color: var(--accent);
 }
 
-.video-wrapper {
-  margin-top: 16px;
-  width: 100%;
-  border-radius: 12px;
+.status-message {
+  font-size: 0.85rem;
+  color: var(--accent);
+  margin: 8px 0 0 0;
+  min-height: 18px;
+  font-weight: 500;
+}
+
+/* Beautiful music deck */
+.player-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  text-align: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.player-thumb-large {
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  margin: 0 auto 16px auto;
+  background-size: cover;
+  background-position: center;
+  background-color: #2a2d3d;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  transition: transform 0.3s ease;
+}
+
+.player-thumb-large.playing {
+  animation: spin 20s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.player-info h4 {
+  margin: 0 0 6px 0;
+  font-size: 1.1rem;
+  white-space: nowrap;
   overflow: hidden;
-  background-color: #000;
-  aspect-ratio: 16 / 9;
+  text-overflow: ellipsis;
+}
+
+.player-info p {
+  margin: 0 0 20px 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.playback-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+input[type="range"] {
+  flex-grow: 1;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 .history-section h3 {
@@ -135,7 +207,7 @@ input:focus {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: 400px;
+  max-height: 300px;
   overflow-y: auto;
 }
 
@@ -146,6 +218,7 @@ input:focus {
   margin-top: 20px;
 }
 
+/* Offline cards */
 .history-card {
   display: flex;
   align-items: center;
@@ -155,12 +228,11 @@ input:focus {
   border-radius: 10px;
   padding: 8px;
   cursor: pointer;
-  transition: background-color 0.2s, border-color 0.2s;
+  transition: background-color 0.2s;
 }
 
 .history-card:hover {
   background-color: #20222e;
-  border-color: #31354a;
 }
 
 .history-thumb {
@@ -170,6 +242,7 @@ input:focus {
   background-position: center;
   border-radius: 6px;
   flex-shrink: 0;
+  background-color: #2a2d3d;
 }
 
 .history-info {
@@ -184,11 +257,25 @@ input:focus {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--text-main);
 }
 
 .history-meta {
   font-size: 0.75rem;
   color: var(--text-muted);
   margin: 0;
+}
+
+.btn-delete {
+  background: none;
+  border: none;
+  color: #ff3b30;
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.btn-delete:hover {
+  background-color: rgba(255, 59, 48, 0.1);
 }
