@@ -1,14 +1,31 @@
-let player;
 let deferredPrompt;
 let playHistory = [];
+let isSeeking = false;
 
-const silentAudio = document.getElementById('silentAudio');
+const audioPlayer = document.getElementById('audioPlayer');
+const playPauseBtn = document.getElementById('playPauseBtn');
+const progressBar = document.getElementById('progressBar');
+const currentTimeEl = document.getElementById('currentTime');
+const totalDurationEl = document.getElementById('totalDuration');
+const currentTrackTitle = document.getElementById('currentTrackTitle');
+const currentTrackArtist = document.getElementById('currentTrackArtist');
+const playerThumb = document.getElementById('playerThumb');
+
 const installBtn = document.getElementById('installBtn');
 const loadBtn = document.getElementById('loadBtn');
 const videoInput = document.getElementById('videoUrl');
 const historyList = document.getElementById('historyList');
 
-// 1. Service Worker & Installation Registration
+const PIPED_INSTANCES = [
+  'https://pipedapi.kavin.rocks',
+  'https://pipedapi.leptons.xyz',
+  'https://pipedapi.r4fo.com',
+  'https://piped-api.lunar.icu'
+];
+
+playerThumb.style.backgroundImage = "url('https://images.unsplash.com/photo-1614680376593-902f74fa0d41?w=320')";
+
+// 1. Service Worker Setup
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js')
     .then(() => console.log('Service Worker active'))
@@ -32,9 +49,155 @@ installBtn.addEventListener('click', async () => {
   }
 });
 
-// 2. Local Storage (JSON History Management)
+// 2. Fetch Pure Audio Stream from YouTube Bypass APIs
+async function fetchAudioStream(videoId) {
+  for (const instance of PIPED_INSTANCES) {
+    try {
+      const res = await fetch(`${instance}/streams/${videoId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.audioStreams && data.audioStreams.length > 0) {
+          const bestAudio = data.audioStreams.find(s => s.mimeType.includes('audio/mp4') || s.format === 'M4A') || data.audioStreams[0];
+          return {
+            streamUrl: bestAudio.url,
+            title: data.title || `Track (${videoId})`,
+            uploader: data.uploader || 'YouTube Artist',
+            thumbnail: data.thumbnailUrl || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+          };
+        }
+      }
+    } catch (e) {
+      console.warn(`Piped Instance ${instance} failed. Trying next...`);
+    }
+  }
+  throw new Error("Unable to parse audio stream. All backends are currently busy.");
+}
+
+// 3. User Gesture Preservation Lock (CRUCIAL FOR MOBILE BACKGROUND PLAYBACK)
+function loadVideoDirectly(videoId) {
+  // We immediately set a silent source to play synchronously. 
+  // This satisfies the mobile OS requirement that media starts during a direct tap event.
+  audioPlayer.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+  
+  audioPlayer.play()
+    .then(() => {
+      // Once the browser registers the user gesture on this audio element,
+      // we can safely execute the async network fetch without losing background privileges.
+      playVideo(videoId);
+    })
+    .catch((e) => {
+      console.warn("Silent play boundary failed, falling back to direct play:", e);
+      playVideo(videoId);
+    });
+}
+
+async function playVideo(videoId) {
+  currentTrackTitle.textContent = "Loading stream...";
+  currentTrackArtist.textContent = "Extracting background audio track...";
+  playerThumb.classList.remove('playing');
+  
+  try {
+    const mediaInfo = await fetchAudioStream(videoId);
+    
+    // Swap source to the fetched stream url (retains the user-initiated play lock)
+    audioPlayer.src = mediaInfo.streamUrl;
+    audioPlayer.load();
+    
+    audioPlayer.play()
+      .then(() => {
+        playerThumb.classList.add('playing');
+      })
+      .catch((e) => {
+        console.error("Stream autoplay failed:", e);
+        playPauseBtn.textContent = "▶";
+      });
+
+    // Update Player UI
+    currentTrackTitle.textContent = mediaInfo.title;
+    currentTrackArtist.textContent = mediaInfo.uploader;
+    playerThumb.style.backgroundImage = `url('${mediaInfo.thumbnail}')`;
+
+    setupMediaSession(mediaInfo.title, mediaInfo.uploader, mediaInfo.thumbnail);
+    addToHistory(videoId, mediaInfo.title, mediaInfo.thumbnail);
+
+  } catch (error) {
+    currentTrackTitle.textContent = "Error Loading Stream";
+    currentTrackArtist.textContent = error.message;
+    alert("Streaming failed. All backend gateways are currently busy.");
+  }
+}
+
+// 4. Custom Audio Player Events
+audioPlayer.addEventListener('timeupdate', () => {
+  if (!isSeeking) {
+    const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
+    progressBar.value = isNaN(progress) ? 0 : progress;
+    currentTimeEl.textContent = formatTime(audioPlayer.currentTime);
+  }
+});
+
+audioPlayer.addEventListener('loadedmetadata', () => {
+  totalDurationEl.textContent = formatTime(audioPlayer.duration);
+});
+
+playPauseBtn.addEventListener('click', () => {
+  if (audioPlayer.paused) {
+    audioPlayer.play();
+  } else {
+    audioPlayer.pause();
+  }
+});
+
+audioPlayer.addEventListener('play', () => {
+  playPauseBtn.textContent = "⏸";
+  playerThumb.classList.add('playing');
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
+});
+
+audioPlayer.addEventListener('pause', () => {
+  playPauseBtn.textContent = "▶";
+  playerThumb.classList.remove('playing');
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "paused";
+});
+
+progressBar.addEventListener('input', () => {
+  isSeeking = true;
+});
+
+progressBar.addEventListener('change', () => {
+  const seekTime = (progressBar.value / 100) * audioPlayer.duration;
+  audioPlayer.currentTime = seekTime;
+  isSeeking = false;
+});
+
+function formatTime(seconds) {
+  if (isNaN(seconds)) return "00:00";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+// 5. Media Session Controls (Lock Screen & Background System Actions)
+function setupMediaSession(title, artist, thumbnail) {
+  if (!('mediaSession' in navigator)) return;
+
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: title,
+    artist: artist,
+    album: 'BG Player PWA',
+    artwork: [{ src: thumbnail, sizes: '320x180', type: 'image/jpeg' }]
+  });
+
+  navigator.mediaSession.setActionHandler('play', () => audioPlayer.play());
+  navigator.mediaSession.setActionHandler('pause', () => audioPlayer.pause());
+  navigator.mediaSession.setActionHandler('seekto', (details) => {
+    audioPlayer.currentTime = details.seekTime;
+  });
+}
+
+// 6. Local Storage JSON History
 function initHistory() {
-  const data = localStorage.getItem('yt_pwa_history');
+  const data = localStorage.getItem('yt_pwa_history_audio');
   if (data) {
     try {
       playHistory = JSON.parse(data);
@@ -45,23 +208,12 @@ function initHistory() {
   renderHistory();
 }
 
-async function addToHistory(videoId) {
-  let title = `Video (${videoId})`;
-  try {
-    const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
-    if (res.ok) {
-      const metadata = await res.json();
-      title = metadata.title || title;
-    }
-  } catch (err) {
-    console.warn('Metadata fetch failed:', err);
-  }
-
+function addToHistory(videoId, title, thumbnail) {
   playHistory = playHistory.filter(item => item.id !== videoId);
   playHistory.unshift({
     id: videoId,
     title: title,
-    thumb: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+    thumb: thumbnail,
     time: Date.now()
   });
 
@@ -69,7 +221,7 @@ async function addToHistory(videoId) {
     playHistory.pop();
   }
 
-  localStorage.setItem('yt_pwa_history', JSON.stringify(playHistory));
+  localStorage.setItem('yt_pwa_history_audio', JSON.stringify(playHistory));
   renderHistory();
 }
 
@@ -96,7 +248,6 @@ function escapeHTML(str) {
   );
 }
 
-// 3. Media Player Controls
 function extractVideoId(url) {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
   const match = url.match(regExp);
@@ -114,101 +265,5 @@ loadBtn.addEventListener('click', () => {
   }
 });
 
-function loadVideoDirectly(videoId) {
-  // Silent audio must play during user click interaction to gain browser approval
-  silentAudio.play().catch(() => {});
-
-  if (!player) {
-    player = new YT.Player('player', {
-      height: '100%',
-      width: '100%',
-      videoId: videoId,
-      playerVars: {
-        'playsinline': 1, // Crucial to prevent iOS from opening native fullscreen mode
-        'autoplay': 1,
-        'controls': 1
-      },
-      events: {
-        'onReady': (event) => {
-          event.target.playVideo();
-          setupMediaSession(videoId);
-        },
-        'onStateChange': onPlayerStateChange
-      }
-    });
-  } else {
-    player.loadVideoById(videoId);
-    setupMediaSession(videoId);
-  }
-
-  addToHistory(videoId);
-}
-
-function onPlayerStateChange(event) {
-  if ('mediaSession' in navigator) {
-    if (event.data === YT.PlayerState.PLAYING) {
-      navigator.mediaSession.playbackState = "playing";
-      silentAudio.play().catch(() => {});
-    } else if (event.data === YT.PlayerState.PAUSED) {
-      navigator.mediaSession.playbackState = "paused";
-      silentAudio.pause();
-    }
-  }
-}
-
-// 4. Page Visibility API Background Resume Handler
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    // App is minimized or screen is locked.
-    // Ensure our silent audio track is kept playing so the browser keeps the audio context alive.
-    silentAudio.play().catch(() => {});
-
-    // Attempt to automatically restart the YouTube player in the background 
-    // after a short delay (gives the OS a moment to register the background state)
-    setTimeout(() => {
-      if (player && player.getPlayerState() === YT.PlayerState.PAUSED) {
-        player.playVideo();
-      }
-    }, 1000);
-  }
-});
-
-// 5. Media Session Integration (For Lock Screen Resume)
-async function setupMediaSession(videoId) {
-  if (!('mediaSession' in navigator)) return;
-
-  let title = "Background Stream";
-  try {
-    const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
-    if (res.ok) {
-      const data = await res.json();
-      title = data.title || title;
-    }
-  } catch (err) {}
-
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title: title,
-    artist: 'PWA Background Player',
-    album: 'YouTube Playlist',
-    artwork: [
-      { src: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`, sizes: '320x180', type: 'image/jpeg' }
-    ]
-  });
-
-  navigator.mediaSession.setActionHandler('play', () => {
-    if (player) {
-      player.playVideo();
-      silentAudio.play().catch(() => {});
-    }
-  });
-
-  navigator.mediaSession.setActionHandler('pause', () => {
-    if (player) {
-      player.pauseVideo();
-      silentAudio.pause();
-    }
-  });
-}
-
-// Initialize history on boot
+// Boot the history list
 initHistory();
