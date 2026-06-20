@@ -8,7 +8,7 @@ const loadBtn = document.getElementById('loadBtn');
 const videoInput = document.getElementById('videoUrl');
 const historyList = document.getElementById('historyList');
 
-// 1. Service Worker & Installation Registration (Using Relative Paths)
+// 1. Service Worker & Installation Registration
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js')
     .then(() => console.log('Service Worker active'))
@@ -47,8 +47,6 @@ function initHistory() {
 
 async function addToHistory(videoId) {
   let title = `Video (${videoId})`;
-  
-  // Attempt to fetch title via standard YouTube CORS-enabled oEmbed endpoint
   try {
     const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
     if (res.ok) {
@@ -56,10 +54,9 @@ async function addToHistory(videoId) {
       title = metadata.title || title;
     }
   } catch (err) {
-    console.warn('Metadata fetch failed, defaulting to template label', err);
+    console.warn('Metadata fetch failed:', err);
   }
 
-  // Deduplicate and insert new entry at top
   playHistory = playHistory.filter(item => item.id !== videoId);
   playHistory.unshift({
     id: videoId,
@@ -68,7 +65,6 @@ async function addToHistory(videoId) {
     time: Date.now()
   });
 
-  // Keep list size limited to 20 tracks
   if (playHistory.length > 20) {
     playHistory.pop();
   }
@@ -119,7 +115,7 @@ loadBtn.addEventListener('click', () => {
 });
 
 function loadVideoDirectly(videoId) {
-  // Silent audio must be triggered here to secure audio session context
+  // Silent audio must play during user click interaction to gain browser approval
   silentAudio.play().catch(() => {});
 
   if (!player) {
@@ -128,7 +124,7 @@ function loadVideoDirectly(videoId) {
       width: '100%',
       videoId: videoId,
       playerVars: {
-        'playsinline': 1,
+        'playsinline': 1, // Crucial to prevent iOS from opening native fullscreen mode
         'autoplay': 1,
         'controls': 1
       },
@@ -160,7 +156,24 @@ function onPlayerStateChange(event) {
   }
 }
 
-// 4. Media Session Integration (For System-Level lock screen controls)
+// 4. Page Visibility API Background Resume Handler
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    // App is minimized or screen is locked.
+    // Ensure our silent audio track is kept playing so the browser keeps the audio context alive.
+    silentAudio.play().catch(() => {});
+
+    // Attempt to automatically restart the YouTube player in the background 
+    // after a short delay (gives the OS a moment to register the background state)
+    setTimeout(() => {
+      if (player && player.getPlayerState() === YT.PlayerState.PAUSED) {
+        player.playVideo();
+      }
+    }, 1000);
+  }
+});
+
+// 5. Media Session Integration (For Lock Screen Resume)
 async function setupMediaSession(videoId) {
   if (!('mediaSession' in navigator)) return;
 
