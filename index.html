@@ -19,21 +19,22 @@
     </header>
 
     <main class="content">
-      <section class="player-section">
-        <!-- Local File Import -->
+      <!-- Download Manager -->
+      <section class="download-section">
         <div class="input-group">
-          <label for="fileInput" class="btn btn-primary" style="display: block; text-align: center; width: 100%;">
-            Select Downloaded Audio
-          </label>
-          <input type="file" id="fileInput" accept="audio/*" style="display: none;" />
+          <input type="text" id="videoUrl" placeholder="Paste YouTube Link or Video ID" />
+          <button id="downloadBtn" class="btn btn-primary">Download</button>
         </div>
+        <p id="statusMsg" class="status-message"></p>
+      </section>
         
-        <!-- Native Audio player UI -->
+      <!-- Active Player Deck -->
+      <section class="player-section">
         <div class="player-card">
           <div id="playerThumb" class="player-thumb-large"></div>
           <div class="player-info">
-            <h4 id="currentTrackTitle">No File Selected</h4>
-            <p id="currentTrackArtist">Tap button above to load audio</p>
+            <h4 id="currentTrackTitle">No Track Playing</h4>
+            <p id="currentTrackArtist">Select a downloaded track below</p>
           </div>
           
           <div class="playback-controls">
@@ -47,10 +48,18 @@
           </div>
         </div>
       </section>
+
+      <!-- Persistent Offline List -->
+      <section class="history-section">
+        <h3>Downloaded Tracks</h3>
+        <div id="offlineList" class="history-list">
+          <p class="empty-state">No downloaded tracks found.</p>
+        </div>
+      </section>
     </main>
   </div>
 
-  <!-- Native HTML5 Audio element -->
+  <!-- Native HTML5 Audio element for background play -->
   <audio id="audioPlayer" style="display:none;"></audio>
 
   <script src="./app.js"></script>
