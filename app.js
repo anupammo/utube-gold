@@ -18,7 +18,6 @@ const videoInput = document.getElementById('videoUrl');
 const offlineList = document.getElementById('offlineList');
 const statusMsg = document.getElementById('statusMsg');
 
-// Fallback background image
 const DEFAULT_ART = "https://images.unsplash.com/photo-1614680376593-902f74fa0d41?w=320";
 playerThumb.style.backgroundImage = `url('${DEFAULT_ART}')`;
 
@@ -29,12 +28,11 @@ const PIPED_INSTANCES = [
   'https://piped-api.lunar.icu'
 ];
 
-// Database configurations
-const DB_NAME = 'BGP_Local_Storage';
+const DB_NAME = 'OfflineMP3PlayerDB';
 const DB_VERSION = 1;
-const STORE_NAME = 'tracks';
+const STORE_NAME = 'mp3_tracks';
 
-// 1. IndexedDB Helper Functions
+// 1. IndexedDB Core Logic
 function initDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -93,7 +91,7 @@ async function deleteTrackFromDB(id) {
   });
 }
 
-// 2. Fetch API stream metadata
+// 2. Resolve YouTube API Metadata
 async function fetchAudioMetadata(videoId) {
   for (const instance of PIPED_INSTANCES) {
     try {
@@ -114,36 +112,49 @@ async function fetchAudioMetadata(videoId) {
       console.warn(`Instance failed: ${instance}. Rotating...`);
     }
   }
-  throw new Error("Decoding server busy. Please try again.");
+  throw new Error("API decoding failed. Decryptor servers are busy.");
 }
 
-// 3. Download & Save Sequence
+// 3. Audio File Downloader (With CORS Bypass Proxy Fallback)
+async function fetchAudioFileAsBlob(streamUrl) {
+  try {
+    const res = await fetch(streamUrl);
+    if (res.ok) return await res.blob();
+  } catch (err) {
+    console.warn("Direct download failed due to CORS. Retrying via secure CORS proxy...", err);
+  }
+
+  // Fallback to CORS proxy to prevent stream failures
+  const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(streamUrl)}`;
+  const res = await fetch(proxyUrl);
+  if (!res.ok) throw new Error("CORS Proxy down. Streaming file was blocked.");
+  return await res.blob();
+}
+
 async function startDownload(videoId) {
-  statusMsg.textContent = "Connecting to streaming gateway...";
+  statusMsg.textContent = "Connecting to decrypter...";
   downloadBtn.disabled = true;
 
   try {
     const metadata = await fetchAudioMetadata(videoId);
     
-    // Fetch Audio Track stream as binary Blob
-    statusMsg.textContent = "Downloading audio file...";
-    const audioRes = await fetch(metadata.streamUrl);
-    if (!audioRes.ok) throw new Error("Audio download failed.");
-    const audioBlob = await audioRes.blob();
+    statusMsg.textContent = "Downloading MP3 stream to app...";
+    const audioBlob = await fetchAudioFileAsBlob(metadata.streamUrl);
 
-    // Fetch Thumbnail image as binary Blob so art functions 100% offline
-    statusMsg.textContent = "Saving metadata art...";
+    statusMsg.textContent = "Caching metadata graphics...";
     let thumbnailBlob = null;
     try {
-      const thumbRes = await fetch(metadata.thumbnailUrl);
-      if (thumbRes.ok) {
-        thumbnailBlob = await thumbRes.blob();
+      // Proxy thumbnail to bypass any strict image domain security policies
+      const imgProxyUrl = `https://corsproxy.io/?${encodeURIComponent(metadata.thumbnailUrl)}`;
+      const imgRes = await fetch(imgProxyUrl);
+      if (imgRes.ok) {
+        thumbnailBlob = await imgRes.blob();
       }
     } catch (err) {
-      console.warn("Could not save thumbnail offline, using fallback.", err);
+      console.warn("Could not cash track art locally.", err);
     }
 
-    // Write file parameters as structured JSON schema into IndexedDB
+    // Insert as physical file block directly inside the IndexedDB sandbox
     await saveTrackToDB({
       id: videoId,
       title: metadata.title,
@@ -153,7 +164,7 @@ async function startDownload(videoId) {
       savedAt: Date.now()
     });
 
-    statusMsg.textContent = "Success! Saved offline.";
+    statusMsg.textContent = "Success! Saved in your offline library.";
     videoInput.value = "";
     loadOfflineList();
 
@@ -165,19 +176,17 @@ async function startDownload(videoId) {
   }
 }
 
-// 4. Offline playback mechanics
+// 4. Mount and play offline tracks
 async function playOfflineTrack(id) {
   const track = await getTrackFromDB(id);
-  if (!track) return alert("Database error reading track.");
+  if (!track) return alert("Error reading track parameters.");
 
-  // Clean memory leaks before mounting new tracks
+  // Clear obsolete Blob mappings to free local device memory
   cleanupObjectUrls();
 
-  // Create local Object URLs mapped to raw offline storage blobs
   currentAudioUrl = URL.createObjectURL(track.audioBlob);
   currentThumbUrl = track.thumbnailBlob ? URL.createObjectURL(track.thumbnailBlob) : DEFAULT_ART;
 
-  // Mount elements
   audioPlayer.src = currentAudioUrl;
   audioPlayer.load();
 
@@ -185,12 +194,10 @@ async function playOfflineTrack(id) {
     .then(() => playerThumb.classList.add('playing'))
     .catch(() => playPauseBtn.textContent = "▶");
 
-  // Update UI Elements
   currentTrackTitle.textContent = track.title;
   currentTrackArtist.textContent = track.uploader;
   playerThumb.style.backgroundImage = `url('${currentThumbUrl}')`;
 
-  // Bind controls to system media widget
   setupMediaSession(track.title, track.uploader, currentThumbUrl);
 }
 
@@ -205,16 +212,15 @@ function cleanupObjectUrls() {
   }
 }
 
-// 5. Offline list rendering UI
+// 5. Build dynamic list from IndexedDB records
 async function loadOfflineList() {
   const tracks = await getAllTracksFromDB();
   if (tracks.length === 0) {
-    offlineList.innerHTML = `<p class="empty-state">No downloaded tracks found.</p>`;
+    offlineList.innerHTML = `<p class="empty-state">Your library is empty. Download a track above to get started.</p>`;
     return;
   }
 
   offlineList.innerHTML = tracks.map(track => {
-    // Generate temporary display thumbnail URL for list
     const thumbUrl = track.thumbnailBlob ? URL.createObjectURL(track.thumbnailBlob) : DEFAULT_ART;
     return `
       <div class="history-card" onclick="playOfflineTrack('${track.id}')">
@@ -230,13 +236,13 @@ async function loadOfflineList() {
 }
 
 async function removeTrack(id) {
-  if (confirm("Delete this track from device storage?")) {
+  if (confirm("Delete this track from your offline library?")) {
     await deleteTrackFromDB(id);
     loadOfflineList();
   }
 }
 
-// 6. Audio Player Events
+// 6. Audio Player Handlers
 audioPlayer.addEventListener('timeupdate', () => {
   if (!isSeeking) {
     const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
@@ -282,6 +288,7 @@ function formatTime(seconds) {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
+// 7. System Lock Screen Controls
 function setupMediaSession(title, artist, thumbnail) {
   if (!('mediaSession' in navigator)) return;
 
@@ -319,5 +326,5 @@ downloadBtn.addEventListener('click', () => {
   }
 });
 
-// Load the offline list upon launch
+// Load stored entries on bootup
 loadOfflineList();
